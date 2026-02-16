@@ -5,28 +5,30 @@ class AIGenerator:
     """Handles interactions with Anthropic's Claude API for generating responses"""
     
     # Static system prompt to avoid rebuilding on each call
-    SYSTEM_PROMPT = """ You are an AI assistant specialized in course materials and educational content with access to a comprehensive search tool for course information.
+    SYSTEM_PROMPT = """You are an AI assistant specialized in course materials and educational content. You have access to two tools:
 
-Search Tool Usage:
-- Use the search tool **only** for questions about specific course content or detailed educational materials
-- **One search per query maximum**
-- Synthesize search results into accurate, fact-based responses
-- If search yields no results, state this clearly without offering alternatives
+1. **search_course_content** — Search within course lesson content for specific topics, concepts, or details.
+2. **get_course_outline** — Retrieve a course's outline including its title, link, and full list of lessons.
+
+Tool Selection Guide:
+- **Course outline/structure/syllabus questions** (e.g. "What lessons are in…", "Show me the outline for…", "What does the course cover?"): Use `get_course_outline`
+- **Course content/topic questions** (e.g. "What is MCP?", "Explain how…", "What does lesson 3 cover?"): Use `search_course_content`
+- **General knowledge questions** (not about specific course materials): Answer directly without using any tool
+
+Tool Usage Rules:
+- **One tool call per query maximum**
+- If a tool returns no results, state this clearly without guessing or offering alternatives
 
 Response Protocol:
-- **General knowledge questions**: Answer using existing knowledge without searching
-- **Course-specific questions**: Search first, then answer
-- **No meta-commentary**:
- - Provide direct answers only — no reasoning process, search explanations, or question-type analysis
- - Do not mention "based on the search results"
-
+- When responding to outline queries, include the course title, course link, and each lesson's number and title
+- **No meta-commentary**: Provide direct answers only — no reasoning process, search explanations, or question-type analysis
+- Do not mention "based on the search results" or similar phrases
 
 All responses must be:
-1. **Brief, Concise and focused** - Get to the point quickly
-2. **Educational** - Maintain instructional value
-3. **Clear** - Use accessible language
-4. **Example-supported** - Include relevant examples when they aid understanding
-Provide only the direct answer to what was asked.
+1. **Brief, concise and focused** — Get to the point quickly
+2. **Educational** — Maintain instructional value
+3. **Clear** — Use accessible language
+4. **Example-supported** — Include relevant examples when they aid understanding
 """
     
     def __init__(self, api_key: str, model: str):
@@ -100,9 +102,25 @@ Provide only the direct answer to what was asked.
         """
         # Start with existing messages
         messages = base_params["messages"].copy()
-        
-        # Add AI's tool use response
-        messages.append({"role": "assistant", "content": initial_response.content})
+
+        # Convert ContentBlock objects to serializable dicts for the assistant response
+        content_dicts = []
+        for block in initial_response.content:
+            if block.type == "tool_use":
+                content_dicts.append({
+                    "type": "tool_use",
+                    "id": block.id,
+                    "name": block.name,
+                    "input": block.input
+                })
+            elif block.type == "text":
+                content_dicts.append({
+                    "type": "text",
+                    "text": block.text
+                })
+
+        # Add AI's tool use response with serialized content
+        messages.append({"role": "assistant", "content": content_dicts})
         
         # Execute all tool calls and collect results
         tool_results = []
@@ -123,12 +141,15 @@ Provide only the direct answer to what was asked.
         if tool_results:
             messages.append({"role": "user", "content": tool_results})
         
-        # Prepare final API call without tools
+        # Prepare final API call - include tools if present in original call
         final_params = {
             **self.base_params,
             "messages": messages,
             "system": base_params["system"]
         }
+        # Include tools if present (required when message history contains tool_use/tool_result)
+        if "tools" in base_params:
+            final_params["tools"] = base_params["tools"]
         
         # Get final response
         final_response = self.client.messages.create(**final_params)
