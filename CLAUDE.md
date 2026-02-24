@@ -19,9 +19,31 @@ cd backend && uv run uvicorn app:app --reload --port 8000
 
 # Run a single backend module directly
 cd backend && uv run python <module>.py
+
+# Code Quality Tools
+make format          # Format code with black and isort
+make lint            # Run linting with ruff
+make check           # Run all quality checks (format + lint + tests)
+make test            # Run test suite only
+
+# Alternative: Use shell scripts directly
+./format.sh          # Format code
+./lint.sh            # Lint code
+./quality-check.sh   # Full quality check suite
 ```
 
 The app serves at `http://localhost:8000` with API docs at `http://localhost:8000/docs`.
+
+## Code Quality Standards
+
+This project uses automated tools to maintain code quality:
+
+- **Black** (formatter): 100 character line length, Python 3.13+ target
+- **Ruff** (linter): Fast Python linter checking for errors, bugs, and style
+- **isort** (import sorter): Black-compatible import organization
+- **pytest** (testing): Async-compatible test framework
+
+All configurations are in `pyproject.toml`. See `QUALITY.md` for detailed usage.
 
 ## Environment Setup
 
