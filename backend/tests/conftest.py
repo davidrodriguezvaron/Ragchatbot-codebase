@@ -10,6 +10,10 @@ import os
 # Add backend to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
+from pydantic import BaseModel as PydanticBaseModel
+
 from vector_store import SearchResults
 
 
@@ -241,3 +245,96 @@ def outline_tool_definition():
             "required": ["course_title"]
         }
     }
+
+
+# ============================================================================
+# RAGSystem Mock & API Test Client
+# ============================================================================
+
+@pytest.fixture
+def mock_rag_system():
+    """Mock RAGSystem suitable for API endpoint tests"""
+    rag = Mock()
+    rag.query.return_value = (
+        "MCP is a protocol for AI tools.",
+        [{"text": "MCP Course - Lesson 1", "link": "https://example.com/lesson/1"}],
+    )
+    rag.get_course_analytics.return_value = {
+        "total_courses": 3,
+        "course_titles": ["MCP Course", "RAG Fundamentals", "AI Basics"],
+    }
+    rag.session_manager.create_session.return_value = "generated-session-id"
+    rag.session_manager.clear_session.return_value = None
+    return rag
+
+
+def _build_test_app(rag_system) -> FastAPI:
+    """
+    Build a minimal FastAPI app mirroring app.py's API routes.
+
+    Static file mounting is intentionally omitted so the test client
+    can be created without a real ``../frontend`` directory.
+    """
+
+    class _QueryRequest(PydanticBaseModel):
+        query: str
+        session_id: Optional[str] = None
+
+    class _Source(PydanticBaseModel):
+        text: str
+        link: Optional[str] = None
+
+    class _QueryResponse(PydanticBaseModel):
+        answer: str
+        sources: List[_Source]
+        session_id: str
+
+    class _CourseStats(PydanticBaseModel):
+        total_courses: int
+        course_titles: List[str]
+
+    _app = FastAPI(title="Test RAG API")
+
+    @_app.post("/api/query", response_model=_QueryResponse)
+    async def query_documents(request: _QueryRequest):
+        try:
+            session_id = request.session_id
+            if not session_id:
+                session_id = rag_system.session_manager.create_session()
+            answer, sources = rag_system.query(request.query, session_id)
+            return _QueryResponse(
+                answer=answer,
+                sources=[_Source(**s) for s in sources],
+                session_id=session_id,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @_app.get("/api/courses", response_model=_CourseStats)
+    async def get_course_stats():
+        try:
+            analytics = rag_system.get_course_analytics()
+            return _CourseStats(
+                total_courses=analytics["total_courses"],
+                course_titles=analytics["course_titles"],
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @_app.delete("/api/session/{session_id}")
+    async def delete_session(session_id: str):
+        rag_system.session_manager.clear_session(session_id)
+        return {"status": "ok"}
+
+    return _app
+
+
+@pytest.fixture
+def api_client(mock_rag_system) -> TestClient:
+    """
+    Starlette TestClient wrapping a minimal, static-file-free version of the
+    real FastAPI app.  The RAGSystem is replaced with ``mock_rag_system`` so
+    no ChromaDB or Anthropic API connections are made during tests.
+    """
+    test_app = _build_test_app(mock_rag_system)
+    return TestClient(test_app, raise_server_exceptions=False)
