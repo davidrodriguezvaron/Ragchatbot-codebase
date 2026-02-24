@@ -9,6 +9,13 @@ __pycache__/
 *.so
 .Python
 
+# Quality tools cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
 # Virtual environments
 venv/
 env/
