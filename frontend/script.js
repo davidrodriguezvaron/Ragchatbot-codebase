@@ -67,6 +67,7 @@ async function sendMessage() {
 
     // Add user message
     addMessage(query, 'user');
+    newChatButton.disabled = false;
 
     // Add loading message - create a unique container for it
     const loadingMessage = createLoadingMessage();
@@ -183,6 +184,7 @@ async function createNewSession() {
     currentSessionId = null;
     chatMessages.innerHTML = '';
     addMessage('Welcome to the Course Materials Assistant! I can help you with questions about courses, lessons and specific content. What would you like to know?', 'assistant', null, true);
+    newChatButton.disabled = true;
 }
 
 // Theme Functions
