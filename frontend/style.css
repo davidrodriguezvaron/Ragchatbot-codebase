@@ -246,6 +246,16 @@ header h1 {
     color: var(--primary-color);
 }
 
+.new-chat-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    color: var(--text-secondary);
+}
+
+.new-chat-button:disabled:hover {
+    color: var(--text-secondary);
+}
+
 /* Main Chat Area */
 .chat-main {
     flex: 1;
